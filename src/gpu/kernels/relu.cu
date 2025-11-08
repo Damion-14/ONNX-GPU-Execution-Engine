@@ -1,5 +1,6 @@
 #include "kernels.cuh"
 #include <cuda_runtime.h>
+#include <cstdint>
 #include <stdexcept>
 
 namespace onnx_runner {

@@ -35,8 +35,18 @@ if ! command -v protoc &> /dev/null; then
     exit 1
 fi
 
-protoc --cpp_out=. onnx.proto onnx-ml.proto onnx-operators-ml.proto
+# Compile only onnx.proto which imports the others
+# Use --proto_path to set the search path for imports
+protoc --proto_path=. --cpp_out=. onnx.proto
+
+# The compilation of onnx.proto should have generated the necessary files
+# If not, we need to compile onnx-ml.proto separately with proper imports
+if [ ! -f "onnx.pb.cc" ]; then
+    echo "First compilation failed, trying alternative approach..."
+    protoc --proto_path=. --cpp_out=. onnx-ml.proto onnx.proto
+fi
 
 echo "ONNX protobuf setup complete!"
 echo "Generated files:"
-ls -lh "$ONNX_PROTO_DIR"/*.pb.*
+ls -lh "$ONNX_PROTO_DIR"/*.pb.* 2>/dev/null || echo "Checking for generated files..."
+ls -lh "$ONNX_PROTO_DIR"/*.cc "$ONNX_PROTO_DIR"/*.h 2>/dev/null || echo "No generated files found"

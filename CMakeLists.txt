@@ -3,11 +3,16 @@ project(OnnxRunner LANGUAGES CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_STANDARD 14)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
 # CUDA architecture - adjust based on your GPU
-set(CMAKE_CUDA_ARCHITECTURES 75 86 89)
+set(CMAKE_CUDA_ARCHITECTURES "75;86;89")
+
+# Workaround for glibc compatibility with CUDA
+# Suppress cudafe++ errors about exception specification mismatches
+# NOTE: These flags cause "too many arguments" error with CUDA 12.4 + gcc-13
+# set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe --diag_suppress=20014,20011")
 
 # Find required packages
 find_package(Protobuf REQUIRED)
@@ -67,6 +72,7 @@ target_link_libraries(onnx_gpu_engine PRIVATE
     onnx_proto
     CUDA::cudart
     CUDA::cublas
+    /lib/x86_64-linux-gnu/libstdc++.so.6
 )
 
 # Compiler options
@@ -78,4 +84,7 @@ target_compile_options(onnx_gpu_engine PRIVATE
 # Enable separate compilation for CUDA
 set_target_properties(onnx_gpu_engine PROPERTIES
     CUDA_SEPARABLE_COMPILATION ON
+    BUILD_RPATH "/lib/x86_64-linux-gnu"
+    INSTALL_RPATH "/lib/x86_64-linux-gnu"
+    LINK_FLAGS "-Wl,-rpath,/lib/x86_64-linux-gnu"
 )

@@ -5,6 +5,7 @@
 #include <string>
 #include <numeric>
 #include <stdexcept>
+#include <cstring>
 #include <cuda_runtime.h>
 
 namespace onnx_runner {
@@ -44,7 +45,7 @@ struct CudaDeleter {
 
 class Tensor {
 public:
-    Tensor() : device_(DeviceType::CPU), dtype_(DataType::FLOAT32) {}
+    Tensor() : dtype_(DataType::FLOAT32), device_(DeviceType::CPU) {}
 
     // Constructor for CPU tensor
     Tensor(const std::vector<int64_t>& shape, DataType dtype = DataType::FLOAT32)
@@ -102,7 +103,7 @@ public:
         CUDA_CHECK(cudaMalloc(&gpu_ptr, bytes));
         CUDA_CHECK(cudaMemcpy(gpu_ptr, cpu_data_.data(), bytes, cudaMemcpyHostToDevice));
 
-        gpu_data_.reset(gpu_ptr);
+        gpu_data_.reset(gpu_ptr, CudaDeleter());
         device_ = DeviceType::CUDA;
     }
 
@@ -125,7 +126,7 @@ public:
         void* gpu_ptr = nullptr;
         CUDA_CHECK(cudaMalloc(&gpu_ptr, bytes));
 
-        gpu_data_.reset(gpu_ptr);
+        gpu_data_.reset(gpu_ptr, CudaDeleter());
         device_ = DeviceType::CUDA;
     }
 

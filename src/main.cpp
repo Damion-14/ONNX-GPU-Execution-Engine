@@ -1,0 +1,172 @@
+#include "core/model_parser.hpp"
+#include "core/graph.hpp"
+#include "gpu/gpu_executor.hpp"
+#include "utils/logger.hpp"
+#include "utils/tensor.hpp"
+#include <iostream>
+#include <memory>
+#include <chrono>
+
+using namespace onnx_runner;
+
+void printUsage(const char* program_name) {
+    std::cout << "Usage: " << program_name << " <model.onnx> [options]\n";
+    std::cout << "Options:\n";
+    std::cout << "  --cpu           Use CPU fallback instead of GPU\n";
+    std::cout << "  --verbose       Print detailed timing information\n";
+    std::cout << "  --debug         Enable debug logging\n";
+    std::cout << "  --help          Show this help message\n";
+}
+
+// Helper to create a simple test input tensor
+std::shared_ptr<Tensor> createTestInput(const std::vector<int64_t>& shape) {
+    auto tensor = std::make_shared<Tensor>(shape, DataType::FLOAT32);
+
+    // Fill with simple test data (e.g., sequential values)
+    float* data = tensor->data<float>();
+    for (size_t i = 0; i < tensor->size(); ++i) {
+        data[i] = static_cast<float>(i % 100) / 100.0f;
+    }
+
+    return tensor;
+}
+
+// Print first few values of a tensor for debugging
+void printTensorSample(const std::string& name, const Tensor& tensor, int max_values = 10) {
+    std::cout << name << " " << tensor.shapeStr() << ": [";
+
+    const float* data = tensor.data<float>();
+    int count = std::min(static_cast<int>(tensor.size()), max_values);
+
+    for (int i = 0; i < count; ++i) {
+        std::cout << data[i];
+        if (i < count - 1) std::cout << ", ";
+    }
+
+    if (tensor.size() > static_cast<size_t>(max_values)) {
+        std::cout << ", ...";
+    }
+
+    std::cout << "]\n";
+}
+
+int main(int argc, char** argv) {
+    // Parse command line arguments
+    if (argc < 2) {
+        printUsage(argv[0]);
+        return 1;
+    }
+
+    std::string model_path;
+    bool use_cpu = false;
+    bool verbose = false;
+    bool debug = false;
+
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--cpu") {
+            use_cpu = true;
+        } else if (arg == "--verbose") {
+            verbose = true;
+        } else if (arg == "--debug") {
+            debug = true;
+        } else if (arg == "--help") {
+            printUsage(argv[0]);
+            return 0;
+        } else if (arg[0] != '-') {
+            model_path = arg;
+        }
+    }
+
+    if (model_path.empty()) {
+        std::cerr << "Error: No model file specified\n";
+        printUsage(argv[0]);
+        return 1;
+    }
+
+    // Configure logger
+    if (debug) {
+        Logger::instance().setLevel(LogLevel::DEBUG);
+    }
+
+    LOG_INFO("=== OnnxRunner GPU Engine ===");
+    LOG_INFO("Model: ", model_path);
+    LOG_INFO("Device: ", use_cpu ? "CPU" : "GPU");
+
+    try {
+        // Step 1: Parse the model
+        auto start_time = std::chrono::high_resolution_clock::now();
+
+        ModelParser parser;
+        auto graph = parser.parse(model_path);
+
+        auto parse_time = std::chrono::high_resolution_clock::now();
+        auto parse_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+            parse_time - start_time).count();
+
+        LOG_INFO("Model parsing took ", parse_duration, " ms");
+
+        // Step 2: Print graph summary
+        graph->printSummary();
+
+        // Step 3: Create test inputs
+        // For a real application, you would provide actual input data
+        std::map<std::string, std::shared_ptr<Tensor>> inputs;
+
+        if (graph->inputs().empty()) {
+            LOG_WARN("No graph inputs defined - graph might be self-contained");
+        } else {
+            LOG_INFO("\n=== Creating Test Inputs ===");
+            for (const auto& input_name : graph->inputs()) {
+                // You would need to know the expected input shape
+                // For this demo, we'll create a simple 2D tensor
+                // In a real application, you'd get this from the model metadata or user input
+                LOG_INFO("Creating test input for: ", input_name);
+
+                // Default to a small tensor - you'd need to adjust this based on your model
+                auto input_tensor = createTestInput({1, 10});
+                inputs[input_name] = input_tensor;
+
+                printTensorSample("Input " + input_name, *input_tensor);
+            }
+        }
+
+        // Step 4: Execute the graph
+        LOG_INFO("\n=== Executing Graph ===");
+
+        GpuExecutor executor(use_cpu);
+        executor.setVerbose(verbose);
+
+        auto exec_start = std::chrono::high_resolution_clock::now();
+
+        auto outputs = executor.execute(*graph, inputs);
+
+        auto exec_end = std::chrono::high_resolution_clock::now();
+        auto exec_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+            exec_end - exec_start).count();
+
+        LOG_INFO("Graph execution took ", exec_duration, " ms");
+
+        // Step 5: Display outputs
+        LOG_INFO("\n=== Outputs ===");
+        for (const auto& [name, tensor] : outputs) {
+            printTensorSample("Output " + name, *tensor);
+        }
+
+        // Step 6: Performance summary
+        auto total_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+            exec_end - start_time).count();
+
+        LOG_INFO("\n=== Performance Summary ===");
+        LOG_INFO("Total time: ", total_time, " ms");
+        LOG_INFO("  - Parsing: ", parse_duration, " ms");
+        LOG_INFO("  - Execution: ", exec_duration, " ms");
+
+        LOG_INFO("\n=== Execution Successful ===");
+        return 0;
+
+    } catch (const std::exception& e) {
+        LOG_ERROR("Error: ", e.what());
+        return 1;
+    }
+}

@@ -29,6 +29,12 @@ public:
         inputs_.push_back(name);
     }
 
+    // Set graph input with shape
+    void addInput(const std::string& name, const std::vector<int64_t>& shape) {
+        inputs_.push_back(name);
+        input_shapes_[name] = shape;
+    }
+
     // Set graph outputs
     void addOutput(const std::string& name) {
         outputs_.push_back(name);
@@ -39,6 +45,15 @@ public:
     const std::map<std::string, std::shared_ptr<Tensor>>& initializers() const { return initializers_; }
     const std::vector<std::string>& inputs() const { return inputs_; }
     const std::vector<std::string>& outputs() const { return outputs_; }
+
+    // Get input shape
+    std::vector<int64_t> getInputShape(const std::string& name) const {
+        auto it = input_shapes_.find(name);
+        if (it != input_shapes_.end()) {
+            return it->second;
+        }
+        return {};  // Return empty if not found
+    }
 
     // Get initializer by name
     std::shared_ptr<Tensor> getInitializer(const std::string& name) const {
@@ -66,6 +81,7 @@ private:
     std::map<std::string, std::shared_ptr<Tensor>> initializers_;  // Constant tensors (weights)
     std::vector<std::string> inputs_;   // Graph input names
     std::vector<std::string> outputs_;  // Graph output names
+    std::map<std::string, std::vector<int64_t>> input_shapes_;  // Input tensor shapes
 };
 
 } // namespace onnx_runner

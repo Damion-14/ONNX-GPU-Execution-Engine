@@ -118,13 +118,19 @@ int main(int argc, char** argv) {
         } else {
             LOG_INFO("\n=== Creating Test Inputs ===");
             for (const auto& input_name : graph->inputs()) {
-                // You would need to know the expected input shape
-                // For this demo, we'll create a simple 2D tensor
-                // In a real application, you'd get this from the model metadata or user input
                 LOG_INFO("Creating test input for: ", input_name);
 
-                // Default to a small tensor - you'd need to adjust this based on your model
-                auto input_tensor = createTestInput({1, 10});
+                // Get the expected input shape from the model
+                auto input_shape = graph->getInputShape(input_name);
+
+                if (input_shape.empty()) {
+                    // Fallback to default shape if not specified
+                    LOG_WARN("  No shape info for input '", input_name, "', using default [1, 10]");
+                    input_shape = {1, 10};
+                }
+
+                // Create test input with the correct shape
+                auto input_tensor = createTestInput(input_shape);
                 inputs[input_name] = input_tensor;
 
                 printTensorSample("Input " + input_name, *input_tensor);

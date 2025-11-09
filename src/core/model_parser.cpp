@@ -50,8 +50,30 @@ std::shared_ptr<Graph> ModelParser::parse(const std::string& model_path) {
 
         // Skip if it's an initializer (initializers are also listed as inputs in ONNX)
         if (!graph->isInitializer(name)) {
-            graph->addInput(name);
-            LOG_DEBUG("  Input: ", name);
+            // Extract shape from type info
+            std::vector<int64_t> shape;
+            if (input.has_type() && input.type().has_tensor_type()) {
+                const auto& tensor_type = input.type().tensor_type();
+                if (tensor_type.has_shape()) {
+                    for (int j = 0; j < tensor_type.shape().dim_size(); ++j) {
+                        const auto& dim = tensor_type.shape().dim(j);
+                        if (dim.has_dim_value()) {
+                            shape.push_back(dim.dim_value());
+                        } else {
+                            // Dynamic dimension - use 1 as default
+                            shape.push_back(1);
+                        }
+                    }
+                }
+            }
+
+            if (!shape.empty()) {
+                graph->addInput(name, shape);
+                LOG_DEBUG("  Input: ", name, " shape: ", Tensor(shape).shapeStr());
+            } else {
+                graph->addInput(name);
+                LOG_DEBUG("  Input: ", name, " (no shape info)");
+            }
         }
     }
 
@@ -169,8 +191,13 @@ std::shared_ptr<Tensor> ModelParser::parseTensorProto(const void* proto_ptr) {
         float* data = tensor->data<float>();
         size_t size = tensor->size();
 
+        LOG_DEBUG("    float_data_size=", tensor_proto->float_data_size(),
+                  ", has_raw_data=", tensor_proto->has_raw_data(),
+                  ", tensor size=", size);
+
         if (tensor_proto->float_data_size() > 0) {
             // Data is stored in float_data field
+            LOG_DEBUG("    Using float_data, size=", tensor_proto->float_data_size());
             for (size_t i = 0; i < size && i < (size_t)tensor_proto->float_data_size(); ++i) {
                 data[i] = tensor_proto->float_data(i);
             }
@@ -178,7 +205,11 @@ std::shared_ptr<Tensor> ModelParser::parseTensorProto(const void* proto_ptr) {
             // Data is stored in raw_data field
             const std::string& raw_data = tensor_proto->raw_data();
             size_t bytes = std::min(size * sizeof(float), raw_data.size());
+            LOG_DEBUG("    Using raw_data, bytes=", bytes, ", size=", size, ", raw_data.size()=", raw_data.size());
             std::memcpy(data, raw_data.data(), bytes);
+            LOG_DEBUG("    First value after copy: ", data[0]);
+        } else {
+            LOG_DEBUG("    No data found!");
         }
     } else if (dtype == DataType::INT64) {
         int64_t* data = tensor->data<int64_t>();

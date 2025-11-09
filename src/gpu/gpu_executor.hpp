@@ -81,6 +81,9 @@ private:
 
     // Helper: allocate output tensor based on operation
     std::shared_ptr<Tensor> allocateOutput(const std::vector<int64_t>& shape);
+
+    // Helper: transpose a matrix
+    void transposeMatrix(const float* input, float* output, int rows, int cols, bool use_cpu);
 };
 
 } // namespace onnx_runner

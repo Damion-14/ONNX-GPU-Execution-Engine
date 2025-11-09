@@ -2,6 +2,7 @@
 #include "kernels/kernels.cuh"
 #include "../utils/logger.hpp"
 #include <stdexcept>
+#include <cstring>
 
 namespace onnx_runner {
 
@@ -28,6 +29,17 @@ GpuExecutor::execute(const Graph& graph,
     // Initialize constant tensors (initializers/weights)
     for (const auto& [name, tensor] : graph.initializers()) {
         LOG_DEBUG("Initializer: ", name, " ", tensor->shapeStr());
+
+        // DEBUG: Print first few values
+        const float* data_ptr = tensor->data<float>();
+        std::string values_str = "[";
+        for (size_t i = 0; i < std::min<size_t>(5, tensor->size()); ++i) {
+            values_str += std::to_string(data_ptr[i]);
+            if (i < std::min<size_t>(5, tensor->size()) - 1) values_str += ", ";
+        }
+        values_str += "]";
+        LOG_DEBUG("  First values: ", values_str);
+
         tensors_[name] = tensor;
 
         // Transfer to GPU if not using CPU fallback
@@ -238,23 +250,71 @@ void GpuExecutor::executeGemm(const Node& node) {
     float alpha = node.getFloatAttr("alpha", 1.0f);
     float beta = node.getFloatAttr("beta", 1.0f);
 
-    // For simplicity, only handle the common case: no transpose, alpha=1, beta=1
-    if (transA || transB) {
-        throw std::runtime_error("Gemm with transpose not yet implemented");
+    LOG_DEBUG("  Gemm: A", A->shapeStr(), " B", B->shapeStr(),
+             " transA=", transA, " transB=", transB);
+
+    // Only support alpha=1, beta=1 for now
+    if (alpha != 1.0f || beta != 1.0f) {
+        throw std::runtime_error("Gemm only supports alpha=1.0 and beta=1.0");
     }
 
-    // First do MatMul
-    int64_t M = A->dim(0);
-    int64_t K = A->dim(1);
-    int64_t N = B->dim(1);
+    // Determine dimensions based on transpose flags
+    // Gemm: Y = alpha * op(A) @ op(B) + beta * C
+    // where op(X) = X if trans=0, X^T if trans=1
+    int64_t M = transA ? A->dim(1) : A->dim(0);
+    int64_t K = transA ? A->dim(0) : A->dim(1);
+    int64_t K_B = transB ? B->dim(1) : B->dim(0);
+    int64_t N = transB ? B->dim(0) : B->dim(1);
+
+    LOG_DEBUG("  Result dimensions: M=", M, " K=", K, " N=", N);
+
+    if (K != K_B) {
+        throw std::runtime_error("Gemm dimension mismatch: K dimensions don't match");
+    }
+
+    // Handle transpose by creating transposed copies if needed
+    std::shared_ptr<Tensor> A_op = A;
+    std::shared_ptr<Tensor> B_op = B;
+
+    if (transA) {
+        // Create temporary CPU tensor for transpose
+        auto A_temp = std::make_shared<Tensor>(A->shape());
+        if (A->device() == DeviceType::CUDA) {
+            // Copy from GPU to CPU
+            CUDA_CHECK(cudaMemcpy(A_temp->data<float>(), A->data<float>(),
+                                 A->size() * sizeof(float), cudaMemcpyDeviceToHost));
+        } else {
+            std::memcpy(A_temp->data<float>(), A->data<float>(), A->size() * sizeof(float));
+        }
+
+        A_op = std::make_shared<Tensor>(std::vector<int64_t>{M, K});
+        transposeMatrix(A_temp->data<float>(), A_op->data<float>(), A->dim(0), A->dim(1), use_cpu_fallback_);
+        if (!use_cpu_fallback_) A_op->toGPU();
+    }
+
+    if (transB) {
+        // Create temporary CPU tensor for transpose
+        auto B_temp = std::make_shared<Tensor>(B->shape());
+        if (B->device() == DeviceType::CUDA) {
+            // Copy from GPU to CPU
+            CUDA_CHECK(cudaMemcpy(B_temp->data<float>(), B->data<float>(),
+                                 B->size() * sizeof(float), cudaMemcpyDeviceToHost));
+        } else {
+            std::memcpy(B_temp->data<float>(), B->data<float>(), B->size() * sizeof(float));
+        }
+
+        B_op = std::make_shared<Tensor>(std::vector<int64_t>{K, N});
+        transposeMatrix(B_temp->data<float>(), B_op->data<float>(), B->dim(0), B->dim(1), use_cpu_fallback_);
+        if (!use_cpu_fallback_) B_op->toGPU();
+    }
 
     auto Y = allocateOutput({M, N});
 
     if (use_cpu_fallback_) {
-        kernels::matmulCPU(A->data<float>(), B->data<float>(), Y->data<float>(),
+        kernels::matmulCPU(A_op->data<float>(), B_op->data<float>(), Y->data<float>(),
                           M, K, N);
     } else {
-        kernels::launchMatMul(A->data<float>(), B->data<float>(), Y->data<float>(),
+        kernels::launchMatMul(A_op->data<float>(), B_op->data<float>(), Y->data<float>(),
                              M, K, N);
         CUDA_CHECK(cudaDeviceSynchronize());
     }
@@ -291,6 +351,18 @@ std::shared_ptr<Tensor> GpuExecutor::allocateOutput(const std::vector<int64_t>& 
     }
 
     return tensor;
+}
+
+void GpuExecutor::transposeMatrix(const float* input, float* output, int rows, int cols, bool use_cpu) {
+    // Simple CPU-based matrix transpose
+    // input is rows x cols, output will be cols x rows
+    // This works for both CPU and GPU modes (we transpose on CPU then copy to GPU if needed)
+
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) {
+            output[j * rows + i] = input[i * cols + j];
+        }
+    }
 }
 
 } // namespace onnx_runner

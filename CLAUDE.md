@@ -151,8 +151,23 @@ scripts/                     # Build and setup scripts
 
 ## Testing Strategy
 
-No formal test suite exists. Testing is currently manual:
-1. Create ONNX models using PyTorch and `torch.onnx.export()`
-2. Run with `--verbose` to see per-operation timing
-3. Run with `--debug` for detailed logging
-4. Use `--cpu` flag to compare GPU vs CPU results
+The project includes Python scripts for testing and validation:
+
+**Create test models:**
+```bash
+python3 scripts/export_models.py
+```
+This creates `simple_linear.onnx`, `two_layer.onnx`, and `residual.onnx` with all weights embedded inline.
+
+**Validate C++ output against ONNX Runtime:**
+```bash
+python3 scripts/validate_onnx.py
+```
+This compares the C++ engine output against the reference ONNX Runtime implementation for all test models.
+
+**Manual testing:**
+1. Run with `--verbose` to see per-operation timing
+2. Run with `--debug` for detailed logging
+3. Use `--cpu` flag to compare GPU vs CPU results
+
+**Important:** The C++ parser requires weights to be embedded in the .onnx file (no external .data files). The export script handles this automatically.

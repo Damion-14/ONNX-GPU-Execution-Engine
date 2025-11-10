@@ -68,5 +68,13 @@ void reluCPU(const float* input, float* output, int size) {
     }
 }
 
+// Multi-threaded CPU implementation using OpenMP
+void reluCPUMultiThreaded(const float* input, float* output, int size, int num_threads) {
+    #pragma omp parallel for num_threads(num_threads)
+    for (int i = 0; i < size; ++i) {
+        output[i] = (input[i] > 0.0f) ? input[i] : 0.0f;
+    }
+}
+
 } // namespace kernels
 } // namespace onnx_runner

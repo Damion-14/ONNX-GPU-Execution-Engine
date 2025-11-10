@@ -17,6 +17,7 @@ set(CMAKE_CUDA_ARCHITECTURES "75;86;89")
 # Find required packages
 find_package(Protobuf REQUIRED)
 find_package(CUDAToolkit REQUIRED)
+find_package(OpenMP REQUIRED)
 
 # ONNX protobuf files
 # Instructions: Download onnx.proto and onnx-ml.proto from https://github.com/onnx/onnx
@@ -73,13 +74,14 @@ target_link_libraries(onnx_gpu_engine PRIVATE
     onnx_proto
     CUDA::cudart
     CUDA::cublas
+    OpenMP::OpenMP_CXX
     /lib/x86_64-linux-gnu/libstdc++.so.6
 )
 
 # Compiler options
 target_compile_options(onnx_gpu_engine PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -O3>
-    $<$<COMPILE_LANGUAGE:CUDA>:-O3 --use_fast_math>
+    $<$<COMPILE_LANGUAGE:CUDA>:-O3 --use_fast_math -Xcompiler -fopenmp>
 )
 
 # Enable separate compilation for CUDA
@@ -88,4 +90,8 @@ set_target_properties(onnx_gpu_engine PROPERTIES
     BUILD_RPATH "/lib/x86_64-linux-gnu"
     INSTALL_RPATH "/lib/x86_64-linux-gnu"
     LINK_FLAGS "-Wl,-rpath,/lib/x86_64-linux-gnu"
+    CUDA_RESOLVE_DEVICE_SYMBOLS ON
 )
+
+# Add OpenMP flags for CUDA device link step
+set_property(TARGET onnx_gpu_engine PROPERTY CUDA_LINK_FLAGS "-Xcompiler -fopenmp")

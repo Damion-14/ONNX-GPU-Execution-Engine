@@ -148,8 +148,13 @@ void GpuExecutor::executeMatMul(const Node& node) {
 
     // Execute
     if (use_cpu_fallback_) {
-        kernels::matmulCPU(A->data<float>(), B->data<float>(), Y->data<float>(),
-                          M, K, N);
+        if (num_cpu_threads_ > 1) {
+            kernels::matmulCPUMultiThreaded(A->data<float>(), B->data<float>(), Y->data<float>(),
+                                           M, K, N, num_cpu_threads_);
+        } else {
+            kernels::matmulCPU(A->data<float>(), B->data<float>(), Y->data<float>(),
+                              M, K, N);
+        }
     } else {
         kernels::launchMatMul(A->data<float>(), B->data<float>(), Y->data<float>(),
                              M, K, N);
@@ -173,7 +178,11 @@ void GpuExecutor::executeReLU(const Node& node) {
 
     // Execute
     if (use_cpu_fallback_) {
-        kernels::reluCPU(X->data<float>(), Y->data<float>(), size);
+        if (num_cpu_threads_ > 1) {
+            kernels::reluCPUMultiThreaded(X->data<float>(), Y->data<float>(), size, num_cpu_threads_);
+        } else {
+            kernels::reluCPU(X->data<float>(), Y->data<float>(), size);
+        }
     } else {
         kernels::launchReLU(X->data<float>(), Y->data<float>(), size);
         CUDA_CHECK(cudaDeviceSynchronize());
@@ -225,7 +234,11 @@ void GpuExecutor::executeAdd(const Node& node) {
 
     // Execute
     if (use_cpu_fallback_) {
-        kernels::addCPU(A->data<float>(), B->data<float>(), C->data<float>(), size);
+        if (num_cpu_threads_ > 1) {
+            kernels::addCPUMultiThreaded(A->data<float>(), B->data<float>(), C->data<float>(), size, num_cpu_threads_);
+        } else {
+            kernels::addCPU(A->data<float>(), B->data<float>(), C->data<float>(), size);
+        }
     } else {
         kernels::launchAdd(A->data<float>(), B->data<float>(), C->data<float>(), size);
         CUDA_CHECK(cudaDeviceSynchronize());
@@ -311,8 +324,13 @@ void GpuExecutor::executeGemm(const Node& node) {
     auto Y = allocateOutput({M, N});
 
     if (use_cpu_fallback_) {
-        kernels::matmulCPU(A_op->data<float>(), B_op->data<float>(), Y->data<float>(),
-                          M, K, N);
+        if (num_cpu_threads_ > 1) {
+            kernels::matmulCPUMultiThreaded(A_op->data<float>(), B_op->data<float>(), Y->data<float>(),
+                                           M, K, N, num_cpu_threads_);
+        } else {
+            kernels::matmulCPU(A_op->data<float>(), B_op->data<float>(), Y->data<float>(),
+                              M, K, N);
+        }
     } else {
         kernels::launchMatMul(A_op->data<float>(), B_op->data<float>(), Y->data<float>(),
                              M, K, N);
@@ -325,7 +343,11 @@ void GpuExecutor::executeGemm(const Node& node) {
         int size = Y->size();
 
         if (use_cpu_fallback_) {
-            kernels::addCPU(Y->data<float>(), C->data<float>(), Y->data<float>(), size);
+            if (num_cpu_threads_ > 1) {
+                kernels::addCPUMultiThreaded(Y->data<float>(), C->data<float>(), Y->data<float>(), size, num_cpu_threads_);
+            } else {
+                kernels::addCPU(Y->data<float>(), C->data<float>(), Y->data<float>(), size);
+            }
         } else {
             kernels::launchAdd(Y->data<float>(), C->data<float>(), Y->data<float>(), size);
             CUDA_CHECK(cudaDeviceSynchronize());

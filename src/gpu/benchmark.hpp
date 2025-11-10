@@ -13,28 +13,27 @@ namespace onnx_runner {
 struct OperationTiming {
     std::string node_name;
     std::string op_type;
-    float cpu_time_ms;
+    std::map<int, float> cpu_times_ms;  // thread_count -> time_ms (1 to max_threads)
     float gpu_time_ms;
-    float speedup;  // cpu_time / gpu_time
 };
 
 // Results from benchmark execution
 struct BenchmarkResults {
     std::vector<OperationTiming> operations;
-    float total_cpu_time_ms;
+    std::map<int, float> total_cpu_times_ms;  // thread_count -> total_time_ms
     float total_gpu_time_ms;
-    float overall_speedup;
+    int max_threads;  // Maximum number of threads tested
 
     // Export to JSON format
     std::string toJSON() const;
 };
 
-// Benchmark executor - runs both CPU and GPU and compares performance
+// Benchmark executor - runs CPU (1 to max threads) and GPU benchmarks
 class BenchmarkExecutor {
 public:
-    BenchmarkExecutor() = default;
+    BenchmarkExecutor(int max_threads = 0);  // 0 = use hardware concurrency
 
-    // Run benchmark comparing CPU vs GPU execution
+    // Run benchmark comparing CPU (1 to max threads) and GPU execution
     // Returns timing results and output tensors (from GPU execution)
     std::pair<BenchmarkResults, std::map<std::string, std::shared_ptr<Tensor>>>
     runBenchmark(const Graph& graph,
@@ -42,9 +41,11 @@ public:
                  bool show_live_visualization = true);
 
 private:
+    int max_threads_;  // Maximum number of threads to test
+
     // Display live progress during benchmark
     void displayProgress(const std::string& op_name,
-                        float cpu_time,
+                        const std::map<int, float>& cpu_times,
                         float gpu_time,
                         int current,
                         int total);

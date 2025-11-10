@@ -14,12 +14,14 @@ using namespace onnx_runner;
 void printUsage(const char* program_name) {
     std::cout << "Usage: " << program_name << " <model.onnx> [options]\n";
     std::cout << "Options:\n";
-    std::cout << "  --cpu           Use CPU fallback instead of GPU\n";
-    std::cout << "  --verbose       Print detailed timing information\n";
-    std::cout << "  --debug         Enable debug logging\n";
-    std::cout << "  --benchmark     Run CPU vs GPU benchmark with visualization\n";
-    std::cout << "  --output FILE   Save benchmark results to JSON file\n";
-    std::cout << "  --help          Show this help message\n";
+    std::cout << "  --cpu             Use CPU fallback instead of GPU\n";
+    std::cout << "  --cpu-threads N   Max CPU threads for benchmark mode (default: auto-detect)\n";
+    std::cout << "                    Benchmark will test 1 to N threads\n";
+    std::cout << "  --verbose         Print detailed timing information\n";
+    std::cout << "  --debug           Enable debug logging\n";
+    std::cout << "  --benchmark       Run multi-configuration benchmark (CPU 1-N threads + GPU)\n";
+    std::cout << "  --output FILE     Save benchmark results to JSON file (default: results.json)\n";
+    std::cout << "  --help            Show this help message\n";
 }
 
 // Helper to create a simple test input tensor
@@ -67,11 +69,23 @@ int main(int argc, char** argv) {
     bool debug = false;
     bool benchmark = false;
     std::string output_file;
+    int cpu_threads = 0;  // Default to 0 (auto-detect hardware concurrency)
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--cpu") {
             use_cpu = true;
+        } else if (arg == "--cpu-threads") {
+            if (i + 1 < argc) {
+                cpu_threads = std::atoi(argv[++i]);
+                if (cpu_threads < 1) {
+                    std::cerr << "Error: --cpu-threads must be >= 1\n";
+                    return 1;
+                }
+            } else {
+                std::cerr << "Error: --cpu-threads requires a number\n";
+                return 1;
+            }
         } else if (arg == "--verbose") {
             verbose = true;
         } else if (arg == "--debug") {
@@ -158,21 +172,20 @@ int main(int argc, char** argv) {
 
         if (benchmark) {
             // Run benchmark mode
-            BenchmarkExecutor bench_executor;
+            BenchmarkExecutor bench_executor(cpu_threads);
             auto [results, bench_outputs] = bench_executor.runBenchmark(*graph, inputs, true);
             outputs = bench_outputs;
             bench_results = results;
 
-            // Save to JSON if output file specified
-            if (!output_file.empty()) {
-                std::ofstream out(output_file);
-                if (out.is_open()) {
-                    out << bench_results.toJSON();
-                    out.close();
-                    LOG_INFO("Benchmark results saved to: ", output_file);
-                } else {
-                    LOG_ERROR("Failed to open output file: ", output_file);
-                }
+            // Save to JSON (default to results.json if not specified)
+            std::string json_output = output_file.empty() ? "results.json" : output_file;
+            std::ofstream out(json_output);
+            if (out.is_open()) {
+                out << bench_results.toJSON();
+                out.close();
+                LOG_INFO("Benchmark results saved to: ", json_output);
+            } else {
+                LOG_ERROR("Failed to open output file: ", json_output);
             }
         } else {
             // Normal execution mode
@@ -190,6 +203,15 @@ int main(int argc, char** argv) {
                 exec_end - exec_start).count();
 
             LOG_INFO("Graph execution took ", exec_duration, " ms");
+
+            // Step 6: Performance summary
+            auto total_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+                exec_end - start_time).count();
+
+            LOG_INFO("\n=== Performance Summary ===");
+            LOG_INFO("Total time: ", total_time, " ms");
+            LOG_INFO("  - Parsing: ", parse_duration, " ms");
+            LOG_INFO("  - Execution: ", exec_duration, " ms");
         }
 
         // Step 5: Display outputs
@@ -197,15 +219,6 @@ int main(int argc, char** argv) {
         for (const auto& [name, tensor] : outputs) {
             printTensorSample("Output " + name, *tensor);
         }
-
-        // Step 6: Performance summary
-        auto total_time = std::chrono::duration_cast<std::chrono::milliseconds>(
-            exec_end - start_time).count();
-
-        LOG_INFO("\n=== Performance Summary ===");
-        LOG_INFO("Total time: ", total_time, " ms");
-        LOG_INFO("  - Parsing: ", parse_duration, " ms");
-        LOG_INFO("  - Execution: ", exec_duration, " ms");
 
         LOG_INFO("\n=== Execution Successful ===");
         return 0;

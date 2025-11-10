@@ -6,6 +6,7 @@
 #include <numeric>
 #include <stdexcept>
 #include <cstring>
+#include <cstdint>
 #include <cuda_runtime.h>
 
 namespace onnx_runner {

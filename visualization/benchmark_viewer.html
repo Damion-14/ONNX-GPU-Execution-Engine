@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Thread CPU vs GPU Performance</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            padding: 16px;
+            color: #f1f5f9;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: #1a1f2e;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            padding: clamp(24px, 5vw, 40px);
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: clamp(1.8em, 5vw, 2.5em);
+            margin-bottom: 8px;
+            font-weight: 700;
+        }
+
+        .header p {
+            font-size: clamp(0.95em, 2vw, 1.1em);
+            opacity: 0.9;
+        }
+
+        .input-section {
+            padding: clamp(16px, 4vw, 24px);
+            background: #0f172a;
+            border-bottom: 2px solid #334155;
+        }
+
+        .input-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        @media (min-width: 768px) {
+            .input-controls {
+                flex-direction: row;
+                align-items: flex-end;
+                gap: 12px;
+            }
+        }
+
+        textarea {
+            flex: 1;
+            min-height: 100px;
+            padding: 12px 16px;
+            border: 2px solid #475569;
+            border-radius: 8px;
+            font-family: 'Fira Code', 'Courier New', monospace;
+            font-size: 13px;
+            resize: vertical;
+            background: #1e293b;
+            color: #f1f5f9;
+            transition: border-color 0.2s;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+
+        .button-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: 100%;
+        }
+
+        @media (min-width: 768px) {
+            .button-group {
+                flex-direction: row;
+                width: auto;
+            }
+        }
+
+        button {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            flex: 1;
+        }
+
+        @media (min-width: 768px) {
+            button {
+                flex: auto;
+            }
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(99, 102, 241, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            width: 100%;
+        }
+
+        @media (min-width: 768px) {
+            .file-input-wrapper {
+                width: auto;
+            }
+        }
+
+        .file-input-wrapper input[type=file] {
+            display: none;
+        }
+
+        .file-input-label {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            display: block;
+            text-align: center;
+            transition: all 0.2s;
+        }
+
+        .file-input-label:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(16, 185, 129, 0.3);
+        }
+
+        .stats-box {
+            padding: clamp(16px, 4vw, 32px);
+            background: #0f172a;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px;
+        }
+
+        @media (min-width: 640px) {
+            .stats-box {
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            }
+        }
+
+        .stat-item {
+            padding: 16px;
+            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+            border-radius: 10px;
+            border-left: 4px solid #6366f1;
+            transition: all 0.2s;
+        }
+
+        .stat-item:hover {
+            border-left-color: #8b5cf6;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+        }
+
+        .stat-label {
+            font-size: 0.85em;
+            color: #94a3b8;
+            margin-bottom: 8px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-value {
+            font-size: clamp(1.4em, 4vw, 1.8em);
+            font-weight: 700;
+            color: #60a5fa;
+        }
+
+        .race-section {
+            padding: clamp(24px, 5vw, 40px);
+            background: #1a1f2e;
+        }
+
+        .race-title {
+            font-size: clamp(1.3em, 4vw, 1.8em);
+            font-weight: 700;
+            margin-bottom: 24px;
+            text-align: center;
+            color: #f1f5f9;
+        }
+
+        .race-container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .race-track {
+            margin-bottom: 20px;
+        }
+
+        .track-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .track-label {
+            font-size: clamp(0.95em, 3vw, 1.1em);
+            font-weight: 600;
+        }
+
+        .track-label.cpu {
+            color: #f59e0b;
+        }
+
+        .track-label.gpu {
+            color: #10b981;
+        }
+
+        .track-info {
+            font-size: 0.85em;
+            color: #94a3b8;
+            font-weight: 500;
+        }
+
+        .track-bar-container {
+            width: 100%;
+            height: 40px;
+            background: #334155;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .track-bar {
+            height: 100%;
+            border-radius: 8px;
+            position: absolute;
+            left: 0;
+            transition: left 0.05s linear;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 700;
+            font-size: 0.8em;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            min-width: 50px;
+        }
+
+        .track-bar.cpu {
+            background: linear-gradient(90deg, #f59e0b 0%, #d97706 100%);
+        }
+
+        .track-bar.gpu {
+            background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+        }
+
+        .speedup-badge {
+            background: rgba(255, 255, 255, 0.25);
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            white-space: nowrap;
+        }
+
+        .speed-control {
+            max-width: 900px;
+            margin: 0 auto 24px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+            border-radius: 10px;
+        }
+
+        .speed-control-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .speed-label {
+            font-size: 0.95em;
+            color: #94a3b8;
+            font-weight: 500;
+        }
+
+        .speed-value {
+            font-size: 1.1em;
+            color: #60a5fa;
+            font-weight: 700;
+        }
+
+        .speed-slider {
+            width: 100%;
+            height: 8px;
+            border-radius: 4px;
+            background: #475569;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .speed-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+        }
+
+        .speed-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+        }
+
+        .chart-section {
+            padding: clamp(24px, 5vw, 40px);
+            background: #0f172a;
+        }
+
+        .chart-container {
+            max-width: 1200px;
+            margin: 0 auto 32px auto;
+            background: #1a1f2e;
+            padding: clamp(20px, 4vw, 30px);
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        }
+
+        .chart-title {
+            font-size: clamp(1.2em, 4vw, 1.5em);
+            font-weight: 700;
+            margin-bottom: 30px;
+            color: #f1f5f9;
+            text-align: center;
+        }
+
+        .svg-chart {
+            width: 100%;
+            max-width: 1000px;
+            margin: 0 auto;
+            display: block;
+        }
+
+        .bar-label {
+            font-size: 12px;
+            font-weight: 600;
+            fill: #f1f5f9;
+        }
+
+        .bar-value {
+            font-size: 11px;
+            font-weight: 700;
+            fill: #f1f5f9;
+        }
+
+        .axis-label {
+            font-size: 14px;
+            font-weight: 500;
+            fill: #94a3b8;
+        }
+
+        .cpu-bar {
+            fill: #f59e0b;
+            transition: fill 0.3s;
+        }
+
+        .cpu-bar:hover {
+            fill: #d97706;
+        }
+
+        .gpu-bar {
+            fill: #10b981;
+            transition: fill 0.3s;
+        }
+
+        .gpu-bar:hover {
+            fill: #059669;
+        }
+
+        .error {
+            background: #b7580c;
+            border: 2px solid #f97316;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 16px 16px 0 16px;
+            color: #fef3c7;
+            font-size: 0.95em;
+            line-height: 1.5;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Multi-Threading CPU vs GPU Performance</h1>
+            <p>Dynamic Benchmark Visualization</p>
+        </div>
+
+        <div class="input-section">
+            <div class="input-controls">
+                <textarea id="jsonInput" placeholder='Paste JSON here or use "Load File" button...'></textarea>
+                <div class="button-group">
+                    <button onclick="loadData()">Visualize</button>
+                    <div class="file-input-wrapper">
+                        <input type="file" id="fileInput" accept=".json" onchange="loadFile(event)">
+                        <label for="fileInput" class="file-input-label">Load File</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="error" class="error hidden"></div>
+
+        <div id="statsBox" class="stats-box hidden"></div>
+
+        <div id="raceSection" class="race-section hidden">
+            <h2 class="race-title">Live Performance Race</h2>
+            <div class="race-container">
+                <div class="speed-control">
+                    <div class="speed-control-header">
+                        <span class="speed-label">Animation Speed</span>
+                        <span class="speed-value" id="speedValue">5x</span>
+                    </div>
+                    <input type="range" class="speed-slider" id="speedSlider" min="0.1" max="100" value="5" step="0.1">
+                </div>
+                <div id="raceTracks"></div>
+            </div>
+        </div>
+
+        <div id="chartSection" class="chart-section hidden">
+            <div class="chart-container">
+                <h3 class="chart-title">Total Execution Time Comparison</h3>
+                <svg id="svgChart" class="svg-chart" viewBox="0 0 1000 500"></svg>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let raceAnimationId = null;
+        let raceData = [];
+        let speedScale = 5;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const speedSlider = document.getElementById('speedSlider');
+            const speedValue = document.getElementById('speedValue');
+
+            speedSlider.addEventListener('input', function() {
+                speedScale = parseFloat(this.value);
+                speedValue.textContent = `${speedScale.toFixed(1)}x`;
+
+                if (raceData.length > 0) {
+                    startRaceAnimation();
+                }
+            });
+        });
+
+        function loadFile(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    document.getElementById('jsonInput').value = e.target.result;
+                    loadData();
+                };
+                reader.readAsText(file);
+            }
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            errorDiv.classList.remove('hidden');
+        }
+
+        function hideError() {
+            document.getElementById('error').classList.add('hidden');
+        }
+
+        function parseData(data) {
+            // Extract CPU thread configurations and GPU time
+            const configs = [];
+
+            // Find all total_cpu_*_thread*_ms keys
+            for (let key in data) {
+                if (key.startsWith('total_cpu_') && key.endsWith('_ms')) {
+                    // Extract thread count from key (e.g., "total_cpu_4_threads_ms" -> 4)
+                    const match = key.match(/total_cpu_(\d+)_thread/);
+                    if (match) {
+                        const threads = parseInt(match[1]);
+                        configs.push({
+                            name: `CPU ${threads}T`,
+                            threads: threads,
+                            time: data[key],
+                            type: 'cpu'
+                        });
+                    }
+                }
+            }
+
+            // Add GPU
+            if (data.total_gpu_ms !== undefined) {
+                configs.push({
+                    name: 'GPU',
+                    threads: 0,
+                    time: data.total_gpu_ms,
+                    type: 'gpu'
+                });
+            }
+
+            // Sort by threads (CPU configurations first, then GPU)
+            configs.sort((a, b) => {
+                if (a.type === 'cpu' && b.type === 'cpu') {
+                    return a.threads - b.threads;
+                }
+                if (a.type === 'cpu') return -1;
+                if (b.type === 'cpu') return 1;
+                return 0;
+            });
+
+            return configs;
+        }
+
+        function loadData() {
+            hideError();
+
+            const jsonText = document.getElementById('jsonInput').value.trim();
+            if (!jsonText) {
+                showError('Please paste JSON data or load a file');
+                return;
+            }
+
+            let data;
+            try {
+                data = JSON.parse(jsonText);
+            } catch (e) {
+                showError('Invalid JSON: ' + e.message);
+                return;
+            }
+
+            const configs = parseData(data);
+            if (configs.length === 0) {
+                showError('No valid configuration data found in JSON');
+                return;
+            }
+
+            raceData = configs;
+
+            document.getElementById('statsBox').classList.remove('hidden');
+            document.getElementById('raceSection').classList.remove('hidden');
+            document.getElementById('chartSection').classList.remove('hidden');
+
+            renderStats(configs, data);
+            renderRaceTracks(configs);
+            startRaceAnimation();
+            renderChart(configs);
+        }
+
+        function renderStats(configs, data) {
+            const statsBox = document.getElementById('statsBox');
+
+            const cpuSingle = configs.find(c => c.threads === 1);
+            const cpuMax = configs.filter(c => c.type === 'cpu').reduce((max, c) =>
+                c.threads > max.threads ? c : max, {threads: 0});
+            const gpu = configs.find(c => c.type === 'gpu');
+
+            let statsHTML = '';
+
+            // Total operations
+            if (data.operations) {
+                statsHTML += `
+                    <div class="stat-item">
+                        <div class="stat-label">Total Operations</div>
+                        <div class="stat-value">${data.operations.length}</div>
+                    </div>
+                `;
+            }
+
+            // Max thread count
+            if (data.max_threads) {
+                statsHTML += `
+                    <div class="stat-item">
+                        <div class="stat-label">Max Threads</div>
+                        <div class="stat-value">${data.max_threads}</div>
+                    </div>
+                `;
+            }
+
+            // CPU Single Thread
+            if (cpuSingle) {
+                statsHTML += `
+                    <div class="stat-item">
+                        <div class="stat-label">CPU (1 Thread)</div>
+                        <div class="stat-value">${cpuSingle.time.toFixed(2)} ms</div>
+                    </div>
+                `;
+            }
+
+            // CPU Max Threads
+            if (cpuMax.threads > 0) {
+                statsHTML += `
+                    <div class="stat-item">
+                        <div class="stat-label">CPU (${cpuMax.threads} Threads)</div>
+                        <div class="stat-value">${cpuMax.time.toFixed(2)} ms</div>
+                    </div>
+                `;
+            }
+
+            // GPU
+            if (gpu) {
+                statsHTML += `
+                    <div class="stat-item">
+                        <div class="stat-label">GPU</div>
+                        <div class="stat-value">${gpu.time.toFixed(2)} ms</div>
+                    </div>
+                `;
+            }
+
+            // Multi-threading speedup
+            if (cpuSingle && cpuMax.threads > 1) {
+                const mtSpeedup = cpuSingle.time / cpuMax.time;
+                statsHTML += `
+                    <div class="stat-item">
+                        <div class="stat-label">MT Speedup</div>
+                        <div class="stat-value">${mtSpeedup.toFixed(2)}x</div>
+                    </div>
+                `;
+            }
+
+            // GPU vs Single CPU speedup
+            if (cpuSingle && gpu) {
+                const gpuSpeedup = cpuSingle.time / gpu.time;
+                statsHTML += `
+                    <div class="stat-item">
+                        <div class="stat-label">GPU vs CPU-1T</div>
+                        <div class="stat-value">${gpuSpeedup.toFixed(2)}x</div>
+                    </div>
+                `;
+            }
+
+            statsBox.innerHTML = statsHTML;
+        }
+
+        function renderRaceTracks(configs) {
+            const tracksContainer = document.getElementById('raceTracks');
+            tracksContainer.innerHTML = '';
+
+            configs.forEach(config => {
+                const trackHTML = `
+                    <div class="race-track">
+                        <div class="track-header">
+                            <span class="track-label ${config.type}">${config.name}</span>
+                            <span class="track-info" data-track="${config.name}">0.00 ms</span>
+                        </div>
+                        <div class="track-bar-container">
+                            <div class="track-bar ${config.type}" data-bar="${config.name}">
+                                <span class="speedup-badge" data-badge="${config.name}">1.0x</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                tracksContainer.insertAdjacentHTML('beforeend', trackHTML);
+            });
+        }
+
+        function startRaceAnimation() {
+            if (raceAnimationId) {
+                cancelAnimationFrame(raceAnimationId);
+            }
+
+            const fastest = Math.min(...raceData.map(c => c.time));
+
+            // Update static info
+            raceData.forEach(config => {
+                const info = document.querySelector(`[data-track="${config.name}"]`);
+                const badge = document.querySelector(`[data-badge="${config.name}"]`);
+
+                if (info) info.textContent = `${config.time.toFixed(2)} ms`;
+
+                const speedup = config.time / fastest;
+                if (badge) {
+                    if (config.time === fastest) {
+                        badge.textContent = 'Fastest!';
+                    } else {
+                        badge.textContent = `${speedup.toFixed(2)}x`;
+                    }
+                }
+            });
+
+            // Animation state for each track
+            const animState = raceData.map(config => ({
+                config: config,
+                duration: config.time / speedScale,
+                startTime: null,
+                direction: 1
+            }));
+
+            function animate(timestamp) {
+                animState.forEach(state => {
+                    const bar = document.querySelector(`[data-bar="${state.config.name}"]`);
+                    if (!bar) return;
+
+                    if (state.startTime === null) state.startTime = timestamp;
+
+                    const elapsed = timestamp - state.startTime;
+                    let progress = (elapsed / state.duration) * 100;
+
+                    // Apply direction for bounce effect
+                    let pos = state.direction === 1 ? progress : 100 - progress;
+
+                    // Handle completion and direction change
+                    if (progress >= 100) {
+                        state.direction *= -1;
+                        state.startTime = timestamp;
+                    }
+
+                    pos = Math.max(0, Math.min(100, pos));
+
+                    const maxWidth = bar.parentElement.offsetWidth - 50;
+                    bar.style.left = (pos / 100 * maxWidth) + 'px';
+                    bar.style.width = '50px';
+                });
+
+                raceAnimationId = requestAnimationFrame(animate);
+            }
+
+            raceAnimationId = requestAnimationFrame(animate);
+        }
+
+        function renderChart(configs) {
+            const svg = document.getElementById('svgChart');
+            svg.innerHTML = '';
+
+            const width = 1000;
+            const height = 500;
+            const padding = { top: 40, right: 60, bottom: 100, left: 100 };
+            const chartWidth = width - padding.left - padding.right;
+            const chartHeight = height - padding.top - padding.bottom;
+
+            const maxValue = Math.max(...configs.map(c => c.time));
+            const scale = chartHeight / maxValue;
+
+            const barWidth = Math.min(60, chartWidth / configs.length - 20);
+            const totalBarsWidth = configs.length * barWidth + (configs.length - 1) * 20;
+            const startX = padding.left + (chartWidth - totalBarsWidth) / 2;
+
+            configs.forEach((config, i) => {
+                const barHeight = config.time * scale;
+                const x = startX + i * (barWidth + 20);
+                const y = padding.top + chartHeight - barHeight;
+
+                // Bar
+                const bar = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                bar.setAttribute('class', config.type === 'gpu' ? 'gpu-bar' : 'cpu-bar');
+                bar.setAttribute('x', x);
+                bar.setAttribute('y', y);
+                bar.setAttribute('width', barWidth);
+                bar.setAttribute('height', barHeight);
+                bar.setAttribute('rx', '6');
+                svg.appendChild(bar);
+
+                // Label
+                const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                label.setAttribute('class', 'bar-label');
+                label.setAttribute('x', x + barWidth / 2);
+                label.setAttribute('y', padding.top + chartHeight + 25);
+                label.setAttribute('text-anchor', 'middle');
+                label.textContent = config.name;
+                svg.appendChild(label);
+
+                // Value
+                const value = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                value.setAttribute('class', 'bar-value');
+                value.setAttribute('x', x + barWidth / 2);
+                value.setAttribute('y', y - 8);
+                value.setAttribute('text-anchor', 'middle');
+                value.textContent = `${config.time.toFixed(1)} ms`;
+                svg.appendChild(value);
+            });
+
+            // Y-axis label
+            const yAxisLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            yAxisLabel.setAttribute('class', 'axis-label');
+            yAxisLabel.setAttribute('x', 20);
+            yAxisLabel.setAttribute('y', padding.top + chartHeight / 2);
+            yAxisLabel.setAttribute('text-anchor', 'middle');
+            yAxisLabel.setAttribute('transform', `rotate(-90, 20, ${padding.top + chartHeight / 2})`);
+            yAxisLabel.textContent = 'Execution Time (ms)';
+            svg.appendChild(yAxisLabel);
+
+            // Speedup annotation (GPU vs single-threaded CPU)
+            const cpuSingle = configs.find(c => c.threads === 1);
+            const gpu = configs.find(c => c.type === 'gpu');
+            if (cpuSingle && gpu) {
+                const speedup = (cpuSingle.time / gpu.time).toFixed(2);
+                const speedupText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                speedupText.setAttribute('class', 'bar-value');
+                speedupText.setAttribute('x', width / 2);
+                speedupText.setAttribute('y', padding.top + chartHeight + 70);
+                speedupText.setAttribute('text-anchor', 'middle');
+                speedupText.setAttribute('fill', '#10b981');
+                speedupText.textContent = `GPU is ${speedup}x faster than single-threaded CPU`;
+                svg.appendChild(speedupText);
+            }
+        }
+    </script>
+</body>
+
+</html>

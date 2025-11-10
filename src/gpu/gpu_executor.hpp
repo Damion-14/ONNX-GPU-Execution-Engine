@@ -46,8 +46,8 @@ private:
 // GpuExecutor manages tensor allocation and graph execution on GPU
 class GpuExecutor {
 public:
-    GpuExecutor(bool use_cpu_fallback = false)
-        : use_cpu_fallback_(use_cpu_fallback) {}
+    GpuExecutor(bool use_cpu_fallback = false, int num_threads = 1)
+        : use_cpu_fallback_(use_cpu_fallback), num_cpu_threads_(num_threads) {}
 
     // Execute the graph with given inputs
     // inputs: map of input names to input tensors
@@ -62,6 +62,7 @@ public:
 private:
     bool use_cpu_fallback_;
     bool verbose_ = false;
+    int num_cpu_threads_;
 
     // Tensor storage during execution
     // Maps tensor name to tensor data

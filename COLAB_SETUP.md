@@ -86,6 +86,49 @@ uploaded = files.upload()  # Upload your_model.onnx
 
 ## Troubleshooting
 
+### "CUDA driver version is insufficient for CUDA runtime version" ⚠ COMMON ISSUE
+
+**This is the most common error in Colab.** It happens when the compiled code expects a newer CUDA driver than what's available.
+
+**Quick Fix - Use CPU Mode:**
+```python
+!./build/onnx_gpu_engine model.onnx --cpu --verbose
+```
+
+**Solution 1: Rebuild with Compatible CUDA**
+```python
+# Set CUDA 11.8 (usually compatible with Colab)
+import os
+os.environ['CUDA_HOME'] = '/usr/local/cuda-11.8'
+os.environ['PATH'] = '/usr/local/cuda-11.8/bin:' + os.environ['PATH']
+os.environ['LD_LIBRARY_PATH'] = '/usr/local/cuda-11.8/lib64:' + os.environ.get('LD_LIBRARY_PATH', '')
+
+# Rebuild
+%cd /content/OnnxRunner/build
+!cmake ..
+!make -j$(nproc)
+
+# Test
+%cd /content/OnnxRunner
+!./build/onnx_gpu_engine simple_linear.onnx --verbose
+```
+
+**Solution 2: Restart Runtime**
+Sometimes Colab's CUDA state gets confused. Try:
+1. Runtime → Restart runtime
+2. Re-run the setup script from scratch
+3. The setup script now auto-detects and tries to fix version mismatches
+
+**Solution 3: Check Versions**
+```python
+# Check what's available
+!nvidia-smi
+!nvcc --version
+!ls -la /usr/local/ | grep cuda
+```
+
+The setup script now includes automatic detection and will warn you before this error occurs.
+
 ### "No GPU detected"
 - Verify GPU is enabled: Runtime → Change runtime type → GPU
 - Check GPU availability: `!nvidia-smi`

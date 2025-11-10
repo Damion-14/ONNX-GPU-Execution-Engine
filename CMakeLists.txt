@@ -46,6 +46,7 @@ set(UTILS_SOURCES
 
 set(GPU_SOURCES
     src/gpu/gpu_executor.cpp
+    src/gpu/benchmark.cpp
 )
 
 set(CUDA_SOURCES

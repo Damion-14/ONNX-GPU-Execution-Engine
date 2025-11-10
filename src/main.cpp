@@ -1,11 +1,13 @@
 #include "core/model_parser.hpp"
 #include "core/graph.hpp"
 #include "gpu/gpu_executor.hpp"
+#include "gpu/benchmark.hpp"
 #include "utils/logger.hpp"
 #include "utils/tensor.hpp"
 #include <iostream>
 #include <memory>
 #include <chrono>
+#include <fstream>
 
 using namespace onnx_runner;
 
@@ -15,6 +17,8 @@ void printUsage(const char* program_name) {
     std::cout << "  --cpu           Use CPU fallback instead of GPU\n";
     std::cout << "  --verbose       Print detailed timing information\n";
     std::cout << "  --debug         Enable debug logging\n";
+    std::cout << "  --benchmark     Run CPU vs GPU benchmark with visualization\n";
+    std::cout << "  --output FILE   Save benchmark results to JSON file\n";
     std::cout << "  --help          Show this help message\n";
 }
 
@@ -61,6 +65,8 @@ int main(int argc, char** argv) {
     bool use_cpu = false;
     bool verbose = false;
     bool debug = false;
+    bool benchmark = false;
+    std::string output_file;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -70,6 +76,15 @@ int main(int argc, char** argv) {
             verbose = true;
         } else if (arg == "--debug") {
             debug = true;
+        } else if (arg == "--benchmark") {
+            benchmark = true;
+        } else if (arg == "--output") {
+            if (i + 1 < argc) {
+                output_file = argv[++i];
+            } else {
+                std::cerr << "Error: --output requires a filename\n";
+                return 1;
+            }
         } else if (arg == "--help") {
             printUsage(argv[0]);
             return 0;
@@ -138,20 +153,44 @@ int main(int argc, char** argv) {
         }
 
         // Step 4: Execute the graph
-        LOG_INFO("\n=== Executing Graph ===");
+        std::map<std::string, std::shared_ptr<Tensor>> outputs;
+        BenchmarkResults bench_results;
 
-        GpuExecutor executor(use_cpu);
-        executor.setVerbose(verbose);
+        if (benchmark) {
+            // Run benchmark mode
+            BenchmarkExecutor bench_executor;
+            auto [results, bench_outputs] = bench_executor.runBenchmark(*graph, inputs, true);
+            outputs = bench_outputs;
+            bench_results = results;
 
-        auto exec_start = std::chrono::high_resolution_clock::now();
+            // Save to JSON if output file specified
+            if (!output_file.empty()) {
+                std::ofstream out(output_file);
+                if (out.is_open()) {
+                    out << bench_results.toJSON();
+                    out.close();
+                    LOG_INFO("Benchmark results saved to: ", output_file);
+                } else {
+                    LOG_ERROR("Failed to open output file: ", output_file);
+                }
+            }
+        } else {
+            // Normal execution mode
+            LOG_INFO("\n=== Executing Graph ===");
 
-        auto outputs = executor.execute(*graph, inputs);
+            GpuExecutor executor(use_cpu);
+            executor.setVerbose(verbose);
 
-        auto exec_end = std::chrono::high_resolution_clock::now();
-        auto exec_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-            exec_end - exec_start).count();
+            auto exec_start = std::chrono::high_resolution_clock::now();
 
-        LOG_INFO("Graph execution took ", exec_duration, " ms");
+            outputs = executor.execute(*graph, inputs);
+
+            auto exec_end = std::chrono::high_resolution_clock::now();
+            auto exec_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+                exec_end - exec_start).count();
+
+            LOG_INFO("Graph execution took ", exec_duration, " ms");
+        }
 
         // Step 5: Display outputs
         LOG_INFO("\n=== Outputs ===");

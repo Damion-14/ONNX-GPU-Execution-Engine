@@ -41,8 +41,8 @@ sudo apt-get install protobuf-compiler libprotobuf-dev
 # Install Python (for test model creation)
 sudo apt-get install python3 python3-pip
 
-# Install PyTorch (for creating test ONNX models)
-pip3 install torch onnx
+# Install Python requirements
+pip install -r scripts/requirements.txt
 ```
 
 ## Build Instructions

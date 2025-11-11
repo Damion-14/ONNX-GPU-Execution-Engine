@@ -91,6 +91,27 @@ Expected output:
 ./build/onnx_gpu_engine simple_linear.onnx --cpu
 ```
 
+**Benchmark mode (compare CPU multi-threading vs GPU):**
+```bash
+./build/onnx_gpu_engine two_layer.onnx --benchmark
+```
+
+This will:
+- Run the model on CPU with 1, 2, 3, ..., N threads (auto-detected)
+- Run the model on GPU
+- Show live progress with timing comparisons
+- Save results to `results.json`
+
+**Visualize benchmark results:**
+```bash
+# Open in your browser
+firefox visualization/benchmark_viewer.html
+```
+Then click "Load File" and select `results.json` to see:
+- Interactive statistics dashboard
+- Animated performance race
+- Side-by-side bar chart comparison
+
 ## Using Your Own ONNX Model
 
 Place your `.onnx` file in the project directory and run:

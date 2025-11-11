@@ -6,8 +6,10 @@ A custom ONNX inference engine built with C++17 and CUDA. This project parses ON
 
 - Custom CUDA kernels for GPU-accelerated inference
 - Support for multiple NVIDIA GPU architectures (Turing, Ampere, Ada)
-- CPU fallback mode for debugging
-- Performance benchmarking with CUDA events
+- CPU fallback mode with OpenMP multi-threading support
+- Comprehensive benchmarking: CPU (1-N threads) vs GPU performance comparison
+- Interactive HTML visualization for benchmark results
+- Performance profiling with CUDA events
 - Supports common operations: MatMul, Gemm, ReLU, Add
 
 ## Prerequisites
@@ -16,9 +18,10 @@ A custom ONNX inference engine built with C++17 and CUDA. This project parses ON
 
 - **CUDA Toolkit**: 11.0 or later (tested with 12.4.131)
 - **CMake**: 3.18 or later
-- **C++ Compiler**: GCC 13 (gcc-13/g++-13)
+- **C++ Compiler**: GCC 13 (gcc-13/g++-13) with OpenMP support
 - **Protocol Buffers**: Development libraries and compiler
-- **Python 3**: For creating test models (optional)
+- **OpenMP**: For multi-threaded CPU execution (included with GCC)
+- **Python 3**: For creating test models and running validation scripts (optional)
 
 ### Installing Dependencies
 
@@ -106,11 +109,57 @@ The executable `onnx_gpu_engine` will be created in the `build/` directory.
 ./build/onnx_gpu_engine <model.onnx> [options]
 
 Options:
-  --cpu           Use CPU fallback instead of GPU
-  --verbose       Print detailed timing information
-  --debug         Enable debug logging
-  --help          Show this help message
+  --cpu             Use CPU fallback instead of GPU
+  --cpu-threads N   Max CPU threads for benchmark mode (default: auto-detect)
+                    Benchmark will test 1 to N threads
+  --verbose         Print detailed timing information
+  --debug           Enable debug logging
+  --benchmark       Run multi-configuration benchmark (CPU 1-N threads + GPU)
+  --output FILE     Save benchmark results to JSON file (default: results.json)
+  --help            Show this help message
 ```
+
+### Benchmarking Mode
+
+Run comprehensive performance benchmarks comparing CPU (single-threaded, multi-threaded) and GPU execution:
+
+```bash
+# Benchmark with auto-detected thread count (default: hardware_concurrency)
+./build/onnx_gpu_engine model.onnx --benchmark
+
+# Benchmark with specific maximum thread count
+./build/onnx_gpu_engine model.onnx --benchmark --cpu-threads 8
+
+# Save results to custom file
+./build/onnx_gpu_engine model.onnx --benchmark --output my_results.json
+```
+
+The benchmark will:
+1. Run the model on CPU with 1, 2, 3, ..., N threads
+2. Run the model on GPU
+3. Display live progress with timing comparisons
+4. Save detailed results to `results.json` (or specified file)
+
+### Visualizing Benchmark Results
+
+Open the interactive visualization in your browser:
+
+```bash
+# Open the HTML file
+firefox visualization/benchmark_viewer.html
+# or
+google-chrome visualization/benchmark_viewer.html
+```
+
+Then either:
+- Click "Load File" and select `results.json`
+- Copy/paste the JSON content directly
+
+The visualization provides:
+- **Statistics Dashboard**: Key metrics including speedups and execution times
+- **Live Performance Race**: Animated comparison showing relative speeds
+- **Bar Chart**: Side-by-side comparison of all configurations
+- **Interactive Controls**: Adjustable animation speed
 
 ### Creating Test Models
 
@@ -203,13 +252,14 @@ ONNX File → ModelParser → Graph → GpuExecutor → CUDA Kernels → Output
 ```
 ONNX-GPU-Execution-Engine/
 ├── src/
-│   ├── main.cpp                 # Entry point
+│   ├── main.cpp                 # Entry point and CLI argument parsing
 │   ├── core/                    # ONNX parsing and graph representation
 │   │   ├── model_parser.*
 │   │   ├── graph.*
 │   │   └── node.*
-│   ├── gpu/                     # GPU execution
-│   │   ├── gpu_executor.*
+│   ├── gpu/                     # GPU execution and benchmarking
+│   │   ├── gpu_executor.*       # Graph executor with CPU/GPU support
+│   │   ├── benchmark.*          # Multi-configuration benchmark system
 │   │   └── kernels/             # CUDA kernels
 │   │       ├── kernels.cuh
 │   │       ├── matmul.cu
@@ -221,6 +271,8 @@ ONNX-GPU-Execution-Engine/
 ├── scripts/                     # Build and setup scripts
 │   ├── setup_onnx_proto.sh
 │   └── create_test_model.py
+├── visualization/               # Benchmark visualization
+│   └── benchmark_viewer.html   # Interactive HTML dashboard
 ├── third_party/                 # Generated files (not in git)
 │   └── onnx/
 ├── CMakeLists.txt

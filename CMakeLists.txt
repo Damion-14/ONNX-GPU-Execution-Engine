@@ -54,6 +54,12 @@ set(CUDA_SOURCES
     src/gpu/kernels/matmul.cu
     src/gpu/kernels/relu.cu
     src/gpu/kernels/add.cu
+    src/gpu/kernels/gather.cu
+    src/gpu/kernels/elementwise.cu
+    src/gpu/kernels/reducemean.cu
+    src/gpu/kernels/tensor_ops.cu
+    src/gpu/kernels/layernorm.cu
+    src/gpu/kernels/sub.cu
 )
 
 # Main executable

@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cuda_runtime.h>
+#include <vector>
+#include <cstdint>
 
 namespace onnx_runner {
 namespace kernels {
@@ -36,5 +38,62 @@ void addCPU(const float* A, const float* B, float* C, int size);
 // Multi-threaded CPU fallback for Add
 void addCPUMultiThreaded(const float* A, const float* B, float* C, int size, int num_threads);
 
+// Element-wise Sub
+void launchSub(const float* A, const float* B, float* C, int size, cudaStream_t stream = 0);
+void launchSubScalar(const float* A, float scalar, float* C, int size, cudaStream_t stream = 0);
+
+// Multi-threaded CPU fallback for Sub
+void subCPU(const float* A, const float* B, float* C, int size);
+void subCPUMultiThreaded(const float* A, const float* B, float* C, int size, int num_threads);
+
+
+// Launch: X[M,N] -> Y[M,N], optional gamma[N], beta[N], epsilon scalar
+void launchSimplifiedLayerNorm(const float* X, const float* gamma, const float* beta, float* Y, int M, int N, float epsilon, cudaStream_t stream);
+
+// CPU fallbacks (single-threaded and OpenMP)
+void simplifiedLayerNormCPU(const float* X, const float* gamma, const float* beta, float* Y, int M, int N, float epsilon);
+
+void simplifiedLayerNormCPUMultiThreaded(const float* X, const float* gamma, const float* beta, float* Y, int M, int N, float epsilon, int num_threads);
+
 } // namespace kernels
+
+// Gather operation (outside kernels namespace)
+void launchGatherKernel(
+    const float* data,
+    const int64_t* indices,
+    float* output,
+    int64_t axis_dim_data,
+    int64_t axis_dim_indices,
+    int64_t outer_size,
+    int64_t inner_size,
+    bool use_cpu = false,
+    int num_threads = 1
+);
+
+// Element-wise operations
+void launchMulKernel(const float* A, const float* B, float* C, int size, bool use_cpu = false, int num_threads = 1);
+void launchMulScalarKernel(const float* A, float scalar, float* C, int size, bool use_cpu = false, int num_threads = 1);
+void launchDivKernel(const float* A, const float* B, float* C, int size, bool use_cpu = false, int num_threads = 1);
+void launchDivScalarKernel(const float* A, float scalar, float* C, int size, bool use_cpu = false, int num_threads = 1);
+void launchPowKernel(const float* A, const float* B, float* C, int size, bool use_cpu = false, int num_threads = 1);
+void launchPowScalarKernel(const float* A, float exponent, float* C, int size, bool use_cpu = false, int num_threads = 1);
+void launchSqrtKernel(const float* A, float* C, int size, bool use_cpu = false, int num_threads = 1);
+
+// Reduction operations
+void launchReduceMeanKernel(
+    const float* input,
+    float* output,
+    const std::vector<int64_t>& input_shape,
+    const std::vector<int64_t>& axes,
+    bool use_cpu = false,
+    int num_threads = 1
+);
+
+// Tensor manipulation operations
+void launchReshapeKernel(const float* input, float* output, int64_t total_size, bool use_cpu = false, int num_threads = 1);
+void launchTransposeKernel(const float* input, float* output, const std::vector<int64_t>& input_shape, const std::vector<int>& perm, bool use_cpu = false, int num_threads = 1);
+void launchUnsqueezeKernel(const float* input, float* output, int64_t total_size, bool use_cpu = false, int num_threads = 1);
+void launchSliceKernel(const float* input, float* output, const std::vector<int64_t>& input_shape, const std::vector<int64_t>& starts, const std::vector<int64_t>& steps, const std::vector<int64_t>& output_shape, bool use_cpu = false, int num_threads = 1);
+void launchConcatKernel(const std::vector<const float*>& inputs, float* output, const std::vector<std::vector<int64_t>>& input_shapes, int64_t axis, const std::vector<int64_t>& output_shape, bool use_cpu = false, int num_threads = 1);
+
 } // namespace onnx_runner

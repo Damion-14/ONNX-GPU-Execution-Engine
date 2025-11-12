@@ -70,6 +70,11 @@ void launchAdd(const float* A, const float* B, float* C, int size, cudaStream_t 
 }
 
 void launchAddScalar(const float* A, float scalar, float* C, int size, cudaStream_t stream) {
+    if (size <= 0) {
+        // No elements → nothing to do
+        return;
+    }
+
     int blockSize = 256;
     int gridSize = (size + blockSize - 1) / blockSize;
     add_scalar_kernel<<<gridSize, blockSize, 0, stream>>>(A, scalar, C, size);

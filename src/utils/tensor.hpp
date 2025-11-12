@@ -126,6 +126,8 @@ public:
         size_t bytes = size() * dataTypeSize();
         void* gpu_ptr = nullptr;
         CUDA_CHECK(cudaMalloc(&gpu_ptr, bytes));
+        // Zero-initialize to prevent uninitialized memory issues
+        CUDA_CHECK(cudaMemset(gpu_ptr, 0, bytes));
 
         gpu_data_.reset(gpu_ptr, CudaDeleter());
         device_ = DeviceType::CUDA;
@@ -197,7 +199,7 @@ private:
     }
 
     size_t computeSize(const std::vector<int64_t>& shape) const {
-        if (shape.empty()) return 0;
+        if (shape.empty()) return 1;  // Scalar tensors have size 1
         return std::accumulate(shape.begin(), shape.end(), 1LL, std::multiplies<int64_t>());
     }
 

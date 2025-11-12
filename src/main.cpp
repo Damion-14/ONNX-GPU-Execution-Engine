@@ -1,3 +1,4 @@
+#include <sentencepiece_processor.h>
 #include "core/model_parser.hpp"
 #include "core/graph.hpp"
 #include "gpu/gpu_executor.hpp"
@@ -8,6 +9,7 @@
 #include <memory>
 #include <chrono>
 #include <fstream>
+
 
 using namespace onnx_runner;
 
@@ -21,6 +23,8 @@ void printUsage(const char* program_name) {
     std::cout << "  --debug           Enable debug logging\n";
     std::cout << "  --benchmark       Run multi-configuration benchmark (CPU 1-N threads + GPU)\n";
     std::cout << "  --output FILE     Save benchmark results to JSON file (default: results.json)\n";
+    std::cout << "  --input TEXT      Input text to tokenize\n";
+    std::cout << "  --tokenizer FILE  Path to SentencePiece model file (.model or .spm)\n";
     std::cout << "  --help            Show this help message\n";
 }
 
@@ -35,6 +39,64 @@ std::shared_ptr<Tensor> createTestInput(const std::vector<int64_t>& shape) {
     }
 
     return tensor;
+}
+
+std::vector<int64_t> tokenizeText(const std::string& text, const std::string& tokenizer_path) {
+    static std::unique_ptr<sentencepiece::SentencePieceProcessor> processor;
+
+    if (!processor) {
+        processor = std::make_unique<sentencepiece::SentencePieceProcessor>();
+        const auto status = processor->Load(tokenizer_path);
+        
+        if (!status.ok()) {
+            std::cerr << "[Tokenizer] Failed to load SentencePiece model: " 
+                      << status.ToString() << std::endl;
+            throw std::runtime_error("Failed to load tokenizer");
+        }
+        
+        std::cout << "[Tokenizer] Loaded from: " << tokenizer_path << std::endl;
+        std::cout << "[Tokenizer] Vocabulary size: " << processor->GetPieceSize() << std::endl;
+    }
+
+    std::vector<int> token_ids;
+    const auto status = processor->Encode(text, &token_ids);
+    
+    if (!status.ok()) {
+        std::cerr << "[Tokenizer] Failed to encode text: " << status.ToString() << std::endl;
+        throw std::runtime_error("Failed to encode text");
+    }
+
+    // Convert int to int64_t
+    std::vector<int64_t> result(token_ids.begin(), token_ids.end());
+    return result;
+}
+
+// Decode token IDs back to text (optional, for debugging)
+std::string decodeTokens(const std::vector<int64_t>& token_ids, const std::string& tokenizer_path) {
+    static std::unique_ptr<sentencepiece::SentencePieceProcessor> processor;
+
+    if (!processor) {
+        processor = std::make_unique<sentencepiece::SentencePieceProcessor>();
+        const auto status = processor->Load(tokenizer_path);
+        
+        if (!status.ok()) {
+            std::cerr << "[Tokenizer] Failed to load SentencePiece model for decoding" << std::endl;
+            return "";
+        }
+    }
+
+    // Convert int64_t to int
+    std::vector<int> ids(token_ids.begin(), token_ids.end());
+    
+    std::string text;
+    const auto status = processor->Decode(ids, &text);
+    
+    if (!status.ok()) {
+        std::cerr << "[Tokenizer] Failed to decode tokens: " << status.ToString() << std::endl;
+        return "";
+    }
+
+    return text;
 }
 
 // Print first few values of a tensor for debugging
@@ -70,6 +132,8 @@ int main(int argc, char** argv) {
     bool benchmark = false;
     std::string output_file;
     int cpu_threads = 0;  // Default to 0 (auto-detect hardware concurrency)
+    std::string user_input_text;
+    std::string tokenizer_path;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -102,6 +166,20 @@ int main(int argc, char** argv) {
         } else if (arg == "--help") {
             printUsage(argv[0]);
             return 0;
+        } else if (arg == "--input") {
+            if (i + 1 < argc) {
+                user_input_text = argv[++i];
+            } else {
+                std::cerr << "Error: --input requires a string\n";
+                return 1;
+            }
+        } else if (arg == "--tokenizer") {
+            if (i + 1 < argc) {
+                tokenizer_path = argv[++i];
+            } else {
+                std::cerr << "Error: --tokenizer requires a file path\n";
+                return 1;
+            }
         } else if (arg[0] != '-') {
             model_path = arg;
         }
@@ -138,31 +216,65 @@ int main(int argc, char** argv) {
         // Step 2: Print graph summary
         graph->printSummary();
 
-        // Step 3: Create test inputs
-        // For a real application, you would provide actual input data
+        // Step 3: Prepare actual input tensors
         std::map<std::string, std::shared_ptr<Tensor>> inputs;
 
         if (graph->inputs().empty()) {
             LOG_WARN("No graph inputs defined - graph might be self-contained");
         } else {
-            LOG_INFO("\n=== Creating Test Inputs ===");
+            LOG_INFO("\n=== Preparing Model Inputs ===");
             for (const auto& input_name : graph->inputs()) {
-                LOG_INFO("Creating test input for: ", input_name);
+                LOG_INFO("Preparing input for: ", input_name);
 
-                // Get the expected input shape from the model
-                auto input_shape = graph->getInputShape(input_name);
-
-                if (input_shape.empty()) {
-                    // Fallback to default shape if not specified
-                    LOG_WARN("  No shape info for input '", input_name, "', using default [1, 10]");
-                    input_shape = {1, 10};
+                // Get input shape from graph
+                auto shape = graph->getInputShape(input_name);
+                if (shape.empty()) {
+                    shape = {1, 1};
                 }
 
-                // Create test input with the correct shape
-                auto input_tensor = createTestInput(input_shape);
-                inputs[input_name] = input_tensor;
+                if (!user_input_text.empty() && input_name == "input_ids") {
+                    if (tokenizer_path.empty()) {
+                        std::cerr << "Error: --tokenizer <path/to/tokenizer.model> must be provided\n";
+                        return 1;
+                    }
+                    
+                    auto token_ids = tokenizeText(user_input_text, tokenizer_path);
+                    shape = {1, static_cast<int64_t>(token_ids.size())};
+                    auto tensor = std::make_shared<Tensor>(shape, DataType::INT64);
+                    std::memcpy(tensor->data<int64_t>(), token_ids.data(),
+                                token_ids.size() * sizeof(int64_t));
+                    inputs[input_name] = tensor;
 
-                printTensorSample("Input " + input_name, *input_tensor);
+                    LOG_INFO("Tokenized input text: '", user_input_text, "'");
+                    LOG_INFO("Token count: ", token_ids.size());
+                    
+                    // Print first few token IDs for debugging
+                    std::cout << "Token IDs: [";
+                    for (size_t i = 0; i < std::min(size_t(10), token_ids.size()); ++i) {
+                        std::cout << token_ids[i];
+                        if (i < std::min(size_t(10), token_ids.size()) - 1) std::cout << ", ";
+                    }
+                    if (token_ids.size() > 10) std::cout << ", ...";
+                    std::cout << "]\n";
+
+                } else if (input_name == "attention_mask" && !user_input_text.empty()) {
+                    if (tokenizer_path.empty()) {
+                        std::cerr << "Error: --tokenizer <path/to/tokenizer.model> must be provided\n";
+                        return 1;
+                    }
+                    
+                    auto token_ids = tokenizeText(user_input_text, tokenizer_path);
+                    std::vector<int64_t> mask(token_ids.size(), 1);
+                    shape = {1, static_cast<int64_t>(mask.size())};
+                    auto tensor = std::make_shared<Tensor>(shape, DataType::INT64);
+                    std::memcpy(tensor->data<int64_t>(), mask.data(),
+                                mask.size() * sizeof(int64_t));
+                    inputs[input_name] = tensor;
+
+                } else {
+                    // Fallback for non-text inputs
+                    inputs[input_name] = createTestInput(shape);
+                }
             }
         }
 
@@ -218,6 +330,20 @@ int main(int argc, char** argv) {
         LOG_INFO("\n=== Outputs ===");
         for (const auto& [name, tensor] : outputs) {
             printTensorSample("Output " + name, *tensor);
+        }
+
+        // Try to decode output if it looks like token IDs
+        if (outputs.count("output_ids") && !tokenizer_path.empty()) {
+            auto ids = outputs["output_ids"];
+            const int64_t* data = ids->data<int64_t>();
+            std::vector<int64_t> token_ids(data, data + ids->size());
+            
+            try {
+                std::string decoded_text = decodeTokens(token_ids, tokenizer_path);
+                LOG_INFO("Generated text: ", decoded_text);
+            } catch (const std::exception& e) {
+                LOG_WARN("Could not decode output tokens: ", e.what());
+            }
         }
 
         LOG_INFO("\n=== Execution Successful ===");
